@@ -1,0 +1,521 @@
+service: my-ora-backend
+
+frameworkVersion: '>=3.0.0'
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  environment:
+    STAGE: ${self:provider.stage}
+    REGION: ${self:provider.region}
+    OPENAI_API_KEY: ${env:OPENAI_API_KEY, ''}
+    WHATSAPP_VERIFY_TOKEN: ${env:WHATSAPP_VERIFY_TOKEN, ''}
+    WHATSAPP_ACCESS_TOKEN: ${env:WHATSAPP_ACCESS_TOKEN, ''}
+    WHATSAPP_PHONE_NUMBER_ID: ${env:WHATSAPP_PHONE_NUMBER_ID, ''}
+    DYNAMODB_USERS_TABLE: ${self:custom.tables.users}
+    DYNAMODB_MESSAGES_TABLE: ${self:custom.tables.messages}
+    DYNAMODB_SYMPTOMS_TABLE: ${self:custom.tables.symptoms}
+    DYNAMODB_PREDICTIONS_TABLE: ${self:custom.tables.predictions}
+    DYNAMODB_LIFESCORE_TABLE: ${self:custom.tables.lifescore}
+    DYNAMODB_LIFESTYLE_TABLE: ${self:custom.tables.lifestyle}
+    DYNAMODB_ADMIN_TABLE: ${self:custom.tables.admin}
+    S3_BUCKET: ${self:custom.s3.bucket}
+    # DynamoDB Local configuration (if using local DynamoDB)
+    DYNAMODB_ENDPOINT: ${env:DYNAMODB_ENDPOINT, ''}
+    NODE_ENV: ${env:NODE_ENV, 'development'}
+    # NextAuth.js configuration
+    NEXTAUTH_SECRET: ${env:NEXTAUTH_SECRET, ''}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            # Table resources
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.users}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.messages}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.symptoms}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.predictions}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.lifescore}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.lifestyle}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.admin}
+            # GSI (Global Secondary Index) resources - required for Query operations on indexes
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.users}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.messages}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.symptoms}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.predictions}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.lifescore}/index/*
+            - arn:aws:dynamodb:${self:provider.region}:*:table/${self:custom.tables.lifestyle}/index/*
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+            - s3:DeleteObject
+          Resource:
+            - arn:aws:s3:::${self:custom.s3.bucket}/*
+        - Effect: Allow
+          Action:
+            - events:PutRule
+            - events:PutTargets
+            - events:RemoveTargets
+          Resource: '*'
+
+package:
+  individually: false
+  patterns:
+    - '!node_modules/@types/**'
+    - '!node_modules/**/*.d.ts'
+    - '!node_modules/**/*.map'
+    - '!.build/**'
+    - '!scripts/**'
+    - '!*.md'
+    - '!tsconfig.json'
+    - '!.eslintrc.js'
+    - '!.git/**'
+    - '!.serverless/**'
+
+custom:
+  # Esbuild configuration - bundles all dependencies including bcryptjs
+  esbuild:
+    bundle: true
+    minify: false
+    sourcemap: true
+    exclude:
+      - aws-sdk
+    target: node20
+    platform: node
+    concurrency: 10
+  defaultRegion: us-east-1
+  defaultStage: dev
+  serverless-offline:
+    httpPort: 3001
+    lambdaPort: 3002
+    # Set environment variable to indicate we're running offline
+    environment:
+      IS_OFFLINE: 'true'
+      SERVERLESS_OFFLINE: 'true'
+  tables:
+    users: ${self:service}-users-${self:provider.stage}
+    messages: ${self:service}-messages-${self:provider.stage}
+    symptoms: ${self:service}-symptoms-${self:provider.stage}
+    predictions: ${self:service}-predictions-${self:provider.stage}
+    lifescore: ${self:service}-lifescore-${self:provider.stage}
+    lifestyle: ${self:service}-lifestyle-${self:provider.stage}
+    admin: ${self:service}-admin-${self:provider.stage}
+  s3:
+    bucket: ${self:service}-uploads-${self:provider.stage}
+  # Custom domain configuration
+  # Uncomment and configure when you have a domain and ACM certificate
+  # customDomain:
+  #   domainName: api.my-ora.com  # Change to your domain
+  #   basePath: ''
+  #   stage: ${self:provider.stage}
+  #   certificateName: '*.my-ora.com'  # Change to match your certificate
+  #   createRoute53Record: true
+  #   endpointType: 'regional'  # or 'edge' for global distribution
+  #   securityPolicy: 'TLS_1_2'
+
+plugins:
+  - serverless-esbuild
+  - serverless-offline
+  - serverless-domain-manager
+
+functions:
+  # Chat module
+  chatSend:
+    handler: modules/chat/handlers/send.handler
+    events:
+      - http:
+          path: chat
+          method: post
+          cors: true
+  chatConversations:
+    handler: modules/chat/handlers/conversations.handler
+    events:
+      - http:
+          path: chat/conversations
+          method: get
+          cors: true
+  chatMessages:
+    handler: modules/chat/handlers/messages.handler
+    events:
+      - http:
+          path: chat/conversations/{conversationId}/messages
+          method: get
+          cors: true
+
+  # Symptom checker module
+  symptomsCheck:
+    handler: modules/symptom-checker/handlers/check.handler
+    events:
+      - http:
+          path: symptoms/check
+          method: post
+          cors: true
+  symptomsHistory:
+    handler: modules/symptom-checker/handlers/history.handler
+    events:
+      - http:
+          path: symptoms/history
+          method: get
+          cors: true
+
+  # LifeScore module
+  lifescoreCurrent:
+    handler: modules/lifescore/handlers/current.handler
+    events:
+      - http:
+          path: lifescore/current
+          method: get
+          cors: true
+  lifescoreHistory:
+    handler: modules/lifescore/handlers/history.handler
+    events:
+      - http:
+          path: lifescore/history
+          method: get
+          cors: true
+
+  # Lifestyle module
+  lifestyleMeal:
+    handler: modules/lifestyle/handlers/meal.handler
+    events:
+      - http:
+          path: lifestyle/meals
+          method: post
+          cors: true
+  lifestyleActivity:
+    handler: modules/lifestyle/handlers/activity.handler
+    events:
+      - http:
+          path: lifestyle/activities
+          method: post
+          cors: true
+  lifestyleSleep:
+    handler: modules/lifestyle/handlers/sleep.handler
+    events:
+      - http:
+          path: lifestyle/sleep
+          method: post
+          cors: true
+  lifestyleStress:
+    handler: modules/lifestyle/handlers/stress.handler
+    events:
+      - http:
+          path: lifestyle/stress
+          method: post
+          cors: true
+  lifestyleLogs:
+    handler: modules/lifestyle/handlers/logs.handler
+    events:
+      - http:
+          path: lifestyle/{type}
+          method: get
+          cors: true
+
+  # Predictions module
+  predictionsCurrent:
+    handler: modules/predictions/handlers/current.handler
+    events:
+      - http:
+          path: predictions/current
+          method: get
+          cors: true
+  predictionsHistory:
+    handler: modules/predictions/handlers/history.handler
+    events:
+      - http:
+          path: predictions/history
+          method: get
+          cors: true
+
+  # Notifications module
+  notificationsGet:
+    handler: modules/notifications/handlers/get.handler
+    events:
+      - http:
+          path: notifications
+          method: get
+          cors: true
+  notificationsMarkRead:
+    handler: modules/notifications/handlers/markRead.handler
+    events:
+      - http:
+          path: notifications/{id}/read
+          method: post
+          cors: true
+  notificationsMarkAllRead:
+    handler: modules/notifications/handlers/markAllRead.handler
+    events:
+      - http:
+          path: notifications/read-all
+          method: post
+          cors: true
+
+  # Auth module
+  authRegister:
+    handler: modules/auth/handlers/register.handler
+    events:
+      - http:
+          path: auth/register
+          method: post
+          cors: true
+  authVerifyPhone:
+    handler: modules/auth/handlers/verifyPhoneSignup.handler
+    events:
+      - http:
+          path: auth/verify-phone
+          method: post
+          cors: true
+  authCheckUser:
+    handler: modules/auth/handlers/checkUser.handler
+    events:
+      - http:
+          path: auth/check-user
+          method: post
+          cors: true
+  authVerifyCredentials:
+    handler: modules/auth/handlers/verifyCredentials.handler
+    events:
+      - http:
+          path: auth/verify-credentials
+          method: post
+          cors: true
+
+  # Onboarding module
+  onboardingVerifyPhone:
+    handler: modules/onboarding/handlers/verifyPhone.handler
+    events:
+      - http:
+          path: onboarding/verify-phone
+          method: post
+          cors: true
+  onboardingVerifyCode:
+    handler: modules/onboarding/handlers/verifyCode.handler
+    events:
+      - http:
+          path: onboarding/verify-code
+          method: post
+          cors: true
+  onboardingVerifyEmail:
+    handler: modules/onboarding/handlers/verifyEmail.handler
+    events:
+      - http:
+          path: onboarding/verify-email
+          method: post
+          cors: true
+  onboardingCoach:
+    handler: modules/onboarding/handlers/coach.handler
+    events:
+      - http:
+          path: onboarding/coach
+          method: post
+          cors: true
+  onboardingProfile:
+    handler: modules/onboarding/handlers/profile.handler
+    events:
+      - http:
+          path: onboarding/profile
+          method: post
+          cors: true
+
+  # Profile module
+  profileGet:
+    handler: modules/auth/handlers/profileGet.handler
+    events:
+      - http:
+          path: profile
+          method: get
+          cors: true
+  profileUpdate:
+    handler: modules/auth/handlers/profileUpdate.handler
+    events:
+      - http:
+          path: profile
+          method: put
+          cors: true
+
+  # WhatsApp integration
+  whatsappWebhook:
+    handler: modules/integrations/whatsapp/handlers/webhook.handler
+    events:
+      - http:
+          path: whatsapp/webhook
+          method: post
+          cors: true
+      - http:
+          path: whatsapp/webhook
+          method: get
+          cors: true
+
+  # Scheduled tasks (EventBridge)
+  lifescoreCalculator:
+    handler: modules/lifescore/handlers/calculate.handler
+    events:
+      - schedule: rate(1 hour)
+  notificationsScheduler:
+    handler: modules/notifications/handlers/schedule.handler
+    events:
+      - schedule: rate(1 hour)
+
+resources:
+  Resources:
+    # DynamoDB Tables
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tables.users}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: email-index
+            KeySchema:
+              - AttributeName: email
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+
+    MessagesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tables.messages}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: conversationId
+            AttributeType: S
+          - AttributeName: messageId
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: conversationId
+            KeyType: HASH
+          - AttributeName: messageId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: userId-index
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    SymptomsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tables.symptoms}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: symptomId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: symptomId
+            KeyType: RANGE
+
+    PredictionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tables.predictions}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: predictionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: predictionId
+            KeyType: RANGE
+
+    LifeScoreTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tables.lifescore}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: date
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: date
+            KeyType: RANGE
+
+    LifestyleTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tables.lifestyle}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: logId
+            AttributeType: S
+          - AttributeName: type
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: logId
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: type-date-index
+            KeySchema:
+              - AttributeName: type
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+    AdminTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tables.admin}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: adminId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: adminId
+            KeyType: HASH
+
+    # S3 Bucket
+    UploadsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.s3.bucket}
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: true
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
+

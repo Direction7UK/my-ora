@@ -1,0 +1,21 @@
+{
+  "name": "my-ora",
+  "version": "1.0.0",
+  "description": "AI-powered digital health prediction and LifeScore platform",
+  "private": true,
+  "workspaces": [
+    "web",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=web",
+    "build": "npm run build --workspace=web",
+    "deploy:backend": "cd backend && serverless deploy",
+    "deploy:frontend": "cd web && npm run build && npm run deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  }
+}
+

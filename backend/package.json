@@ -1,0 +1,48 @@
+{
+  "name": "my-ora-backend",
+  "version": "1.0.0",
+  "description": "MyOra serverless backend",
+  "main": "index.js",
+  "scripts": {
+    "dev": "serverless offline",
+    "deploy": "serverless deploy",
+    "deploy:function": "serverless deploy function",
+    "lint": "eslint . --ext .ts",
+    "type-check": "tsc --noEmit",
+    "dynamodb:setup": "./scripts/setup-dynamodb-local.sh",
+    "dynamodb:create-tables": "DYNAMODB_ENDPOINT=http://localhost:8000 STAGE=dev REGION=us-east-1 npx ts-node scripts/create-tables.ts",
+    "dynamodb:start": "java -Djava.library.path=./.dynamodb-local/DynamoDBLocal_lib -jar ./.dynamodb-local/DynamoDBLocal.jar -sharedDb -port 8000",
+    "dynamodb:stop": "kill $(cat .dynamodb-local/dynamodb.pid) 2>/dev/null || echo 'DynamoDB Local not running'",
+    "dynamodb:clear": "DYNAMODB_ENDPOINT=http://localhost:8000 STAGE=dev REGION=us-east-1 npx ts-node scripts/clear-dynamodb.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.490.0",
+    "@aws-sdk/client-s3": "^3.490.0",
+    "@aws-sdk/lib-dynamodb": "^3.490.0",
+    "@aws-sdk/s3-request-presigner": "^3.490.0",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.3",
+    "date-fns": "^3.0.6",
+    "jsonwebtoken": "^9.0.2",
+    "openai": "^4.20.1",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.130",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.0",
+    "@types/uuid": "^9.0.7",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "esbuild": "^0.27.0",
+    "eslint": "^8.56.0",
+    "serverless": "^3.40.0",
+    "serverless-domain-manager": "^8.0.0",
+    "serverless-esbuild": "^1.56.1",
+    "serverless-offline": "^13.3.0",
+    "serverless-plugin-typescript": "^2.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}
